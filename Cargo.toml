@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 hyper = "0.12"
+futures = "0.1"
+evmap = "7.1.1"
+seahash = "3.0.6"
