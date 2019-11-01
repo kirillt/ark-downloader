@@ -1,6 +1,6 @@
 mod job;
 
-use hyper::{Body, Request, Response, Method, StatusCode, Server};
+use hyper::{Body, Chunk, Request, Response, Method, StatusCode, Server};
 use hyper::rt::Future;
 use hyper::service::service_fn;
 
@@ -25,6 +25,8 @@ fn ok(value: Response<Body>) -> ResponseFuture {
 
 impl Downloader {
     fn submit_link(&self, request: Request<Body>) -> ResponseFuture {
+        self.refresh();
+
         match (request.method(), request.uri().path()) {
             (&Method::GET, "/") => {
                 ok(Response::new(Body::from("Try POSTing data to /submit\n")))
@@ -37,16 +39,28 @@ impl Downloader {
                     .map(move |chunk| {
                         let data: Vec<u8> = chunk.into_iter().collect();
                         let id = seahash::hash(&data[..]);
-                        if state.jobs_r.contains_key(&id) {
-                            Response::new(Body::from(
-                                format!("The data `{}` is already submitted.\n", id)))
-                        } else {
-                            let mut jobs = state.jobs_w.lock().unwrap();
-                            jobs.insert(id, Job { id });
-                            jobs.refresh();
-                            Response::new(Body::from(
-                                format!("Scheduling download of `{:?}` with id {}.\n",
-                                        String::from_utf8(data), id)))
+
+                        let maybe = state.jobs_r
+                            .get_and(&id, |jobs| {
+                                assert!(jobs.len() == 1);
+                                let job = &jobs[0];
+                                job.status()
+                            });
+
+                        match maybe {
+                            Some(status) => {
+                                Response::new(Body::from(
+                                    format!("The data is already {} with id {}\n", status, id)))
+                            },
+                            None => {
+                                let resource = String::from_utf8(data).unwrap();
+                                let mut jobs = state.jobs_w.lock().unwrap();
+                                jobs.insert(id, Job::start(id, resource.clone()));
+                                jobs.refresh();
+                                Response::new(Body::from(
+                                    format!("Scheduling download of `{:?}` with id {}\n",
+                                            resource, id)))
+                            }
                         }
                     }))
             },
@@ -57,6 +71,10 @@ impl Downloader {
                     .unwrap())
             },
         }
+    }
+
+    fn refresh(&self) {
+        let mut jobs = self.jobs_w.lock().unwrap();
     }
 }
 
