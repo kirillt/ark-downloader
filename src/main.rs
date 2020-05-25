@@ -9,7 +9,18 @@ use evmap::{ReadHandle, WriteHandle};
 
 use futures::{future, Stream};
 
+use clap::Clap;
+
 use job::Job;
+
+#[derive(Clap)]
+#[clap(version = "1.0")]
+struct Options {
+    #[clap(short, long, default_value = "1337")]
+    port: u16,
+    #[clap(short, long, default_value = ".")]
+    directory: String,
+}
 
 #[derive(Clone)]
 struct Downloader {
@@ -79,7 +90,14 @@ impl Downloader {
 }
 
 fn main() {
-    let addr = ([0, 0, 0, 0], 1337).into();
+    let options: Options = Options::parse();
+    println!("Listening port {}", options.port);
+    println!("Downloading eveything into folder {}", options.directory);
+    if &options.directory != "." {
+        std::env::set_current_dir(options.directory).unwrap();
+    }
+
+    let addr = ([0, 0, 0, 0], options.port).into();
 
     let (jobs_r, jobs_w) = evmap::new();
 

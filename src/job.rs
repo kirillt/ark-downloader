@@ -17,6 +17,7 @@ enum JobState {
 impl Job {
     pub fn start(id: u64, resource: String) -> Self {
         let handle = Command::new("youtube-dl")
+            .arg("--force-ipv4")
             .arg(resource)
             .spawn()
             .expect("Failed to start downloading");
