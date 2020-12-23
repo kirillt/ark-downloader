@@ -1,6 +1,6 @@
 mod job;
 
-use hyper::{Body, Chunk, Request, Response, Method, StatusCode, Server};
+use hyper::{Body, Request, Response, Method, StatusCode, Server};
 use hyper::rt::Future;
 use hyper::service::service_fn;
 
@@ -36,17 +36,15 @@ fn ok(value: Response<Body>) -> ResponseFuture {
 
 impl Downloader {
     fn submit_link(&self, request: Request<Body>) -> ResponseFuture {
-        self.refresh();
-
         match (request.method(), request.uri().path()) {
             (&Method::GET, "/") => {
                 ok(Response::new(Body::from("Try POSTing data to /submit\n")))
             },
             (&Method::POST, "/submit") => {
                 let state = self.clone();
-                Box::new(request
-                    .into_body()
-                    .concat2()
+                let (parts, body) = request.into_parts();
+
+                Box::new(body.concat2()
                     .map(move |chunk| {
                         let data: Vec<u8> = chunk.into_iter().collect();
                         let id = seahash::hash(&data[..]);
@@ -54,19 +52,18 @@ impl Downloader {
                         let maybe = state.jobs_r
                             .get_and(&id, |jobs| {
                                 assert!(jobs.len() == 1);
-                                let job = &jobs[0];
-                                job.status()
+                                ()
                             });
 
                         match maybe {
-                            Some(status) => {
+                            Some(_) => {
                                 Response::new(Body::from(
-                                    format!("The data is already {} with id {}\n", status, id)))
+                                    format!("The data is already scheduled with id {}\n", id)))
                             },
                             None => {
                                 let resource = String::from_utf8(data).unwrap();
                                 let mut jobs = state.jobs_w.lock().unwrap();
-                                jobs.insert(id, Job::start(id, resource.clone()));
+                                jobs.insert(id, Job::start(id, resource.clone(), parts.uri.query()));
                                 jobs.refresh();
                                 Response::new(Body::from(
                                     format!("Scheduling download of `{:?}` with id {}\n",
@@ -82,10 +79,6 @@ impl Downloader {
                     .unwrap())
             },
         }
-    }
-
-    fn refresh(&self) {
-        let mut jobs = self.jobs_w.lock().unwrap();
     }
 }
 
