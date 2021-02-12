@@ -19,6 +19,7 @@ impl Job {
             OUTPUT_TEMPLATE_EXT);
 
         let handle = Command::new("youtube-dl")
+            .arg("--restrict-filenames")
             .arg("--force-ipv4")
             .arg(output_template)
             .arg(resource)
